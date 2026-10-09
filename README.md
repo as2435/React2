@@ -1,4 +1,232 @@
 # 202230209 김태율
+# 10월 7일 (6주차)
+
+## Linking and Navigating
+
+## 일반 함수와 객체 구조 분해 할당 매개 변수의 처리
+
+```typescript
+function Page({
+    params,
+}: {
+    params: Promise<{slug: string}>
+})
+
+```
+
+* 일반 함수의 매개 변수 처리
+```typescript
+function Page(props) {...}
+
+```
+
+
+* 객체 구조 분해 할당 매개 변수 처리
+```typescript
+function Page({params}) {...}
+
+```
+
+
+* 이 코드는 다음 코드를 축약한 것
+* 즉 Next.js가 넘겨준 객체 중에서 params를 받아 사용한다는 의미
+```typescript
+function Page(props) {
+    const params = props.params
+}
+
+```
+
+
+
+```typescript
+function Page({
+    params, // 실제 매개변수
+}: {
+    params: Promise<{slug: string}> // 타입 지정
+})
+
+```
+
+* 첫 번째 `{params,}`는 실제로 받을 값을 구조 분해 할당하는 부분
+* 두 번째 `{params: Promise<{slug: string}>}`는 TypeScript에서 위의 매개변수 params의 타입을 설명하는 부분
+* `slug: string`은 객체 중 slug의 값이 문자열이라는 의미
+* Promise로 이 객체를 감싸고 있는 것은 나중에 이런 형태로 prop을 전달하겠다는 의미
+* params가 Promise이기 때문에 아래 코드에서 `await params`로 받을 수 있는 것
+
+```typescript
+function Page({
+    params,
+}: {
+    params: Promise<{slug: string}>
+}) {
+    const {slug} = await params;
+}
+
+```
+
+## generateStaticParams를 사용하는 경우 실습
+
+```typescript
+import { notFound } from "next/navigation";
+import { posts } from "../posts";
+
+export async function generateStaticParams(){
+    return posts.map((post) => ({
+        slug: post.slug,
+    }));
+}
+
+export default async function Posts({
+    params,
+}: {
+    params: Promise<{slug: string}>;
+}) {
+    const { slug } = await params;
+    const post = posts.find((p) => p.slug === slug);
+
+    if(!post) {
+        // 404 처리
+        notFound();
+    }
+
+    return (
+        <article>
+            <h1>{post.title}</h1>
+            <p>{post.content}</p>
+        </article>
+    )
+}
+
+```
+
+* 빌드 시점에 Next.js가 `app/blog3/[slug]/page.tsx` 같은 동적 라우트를 찾으면 `generateStaticParams()`를 실행
+* `generateStaticParams()`가 반환하는 값은 다음과 같은 형태
+```json
+[
+    { "slug": "hello" },
+    { "slug": "world" },
+    { "slug": "nextjs" }
+]
+
+```
+
+
+* 각 params에 대해 `page.tsx`를 실행하여, 정적 HTML 페이지를 생성
+
+## await 없어도 async를 붙여 두는 이유
+
+* Next.js 13+의 App Router에서 `page.tsx` 같은 Server Component는 비동기 렌더링을 전체로 하고 있음
+* 즉, `page.tsx` 안에서 데이터를 fetch하는 경우가 많기 때문에 async를 기본으로 붙여도 전혀 문제가 없음
+
+1. **일관성 유지:** 같은 프로젝트 안에서 어떤 페이지는 async, 어떤 페이지는 일반 function이면 혼라스러울 수 있음
+* Next.js 공식 문서도 대부분 async function으로 예시를 작성
+
+
+2. **확장성:** 지금은 더미 데이터(`posts.find(...)`)를 쓰지만, 나중에 DB나 API에서 데이터를 가져올 때 `await fetch(...)`같은 코드가 들어갈 수 있기 때문에, 미리 async를 붙여 두면 수정할 필요가 없음
+3. **React Server Component 호환성:** Server Component는 Promise를 반환할 수 있어야 하고 Next.js는 내부적으로 async 함수 패턴에 맞춰 최적화된 렌더링파이프라인을 갖고 있어서 async가 붙어 있어도 불필요한 오버헤드가 거의 없음
+
+## generateStaticParams가 없는 경우와 있는 경우 비교
+
+* `generateStaticParams`가 없는 경우 Next.js는 slug 값을 빌드 타임에는 모르는 상태
+* 따라서 slug 페이지에 접속하면 Next.js가 서버에서 요청할 때마다 해당 페이지를 동적으로 렌더링하며, 빌드의 결과물로 HTML 파일은 생성되지 않음
+
+
+* `generateStaticParams`가 있는 경우 Next.js에 빌드 타임에 생성할 slug 목록을 알려줄 수 있음
+* 이 경우에는 지정한 slug에 대해서는 정적 HTML + JSON이 빌드 타임에 생성되어, 최초 접근 시 SSR이 필요 없이 미리 만들어진 페이지 제공
+
+
+
+| 항목 | generateStaticParam 없음 | generateStaticParam 있음 |
+| --- | --- | --- |
+| **페이지 생성 시점** | 요청 시 서버에서 생성(SSR/ISR) | 빌드 타임에 생성(SSG) |
+| **초기 로딩 속도** | 서버 렌더링 필요 -> 상대적으로 느림 | 정적 HTML 제공 -> 매우 빠름 |
+| **SEO** | 가능은 하나 요청 시 생성 | 매우 유리(검색엔진 즉시 HTML 크롤링 가능) |
+| **유연성** | slug를 무한정 지원 가능(DB 조회 등) | slug를 미리 알아야 함(동적 slug는 제한적) |
+
+## 2-3. 느린 네트워크
+
+* 네트워크가 느리거나 불안정한 경우, 사용자가 링크를 클릭하기 전에 프리페칭이 완료되지 않을 수 있음
+* 이 것은 정적 경로와 동적 경로 모두에 영향을 미칠 수 있음
+* 이 경우, `loading.tsx` 파일이 아직 프리페칭되지 않았기 때문에 즉시 표시되지 않을 수 있음
+* 체감 성능을 향상시키려면 전환이 진행되는 동안 즉각적인 피드백을 제공하는 `useLinkStatus` Hook을 사용할 수 있음
+* 초기 애니메이션 지연 시간을 추가하고, 애니메이션을 보이지 않게 시작하면 로딩 표시기를 "디바운스"할 수 있음
+* 즉 로딩 표시기는 내비게이션이 지정된 지연 시간보다 오래 걸리는 경우에만 표시
+* 알아두면 좋은 점: 진행률 표시줄과 같은 다른 시각적 피드백 패턴을 사용할 수도 있음
+
+## 2-4. 프리페칭 비활성화
+
+* `<Link>`컴포넌트에서 `prefetch` prop을 `false`로 설정하여 프리페치를 사용하지 않도록 할 수 있음
+* 이를 대량의 링크 목록(예: 무한 스크롤 테이블)을 렌더링할 때 불필요한 리소스 사용을 방지하는 데 유용
+* 그러나 프리페칭을 비활성화하면 다음과 같은 단점이 있음
+* 정적 라우팅은 사용자가 링크를 클릭할 때만 가져옴
+* 동적 라우팅은 클라이언트가 해당 경로로 이동하기 전에 서버에서 먼저 렌더링 되어야 함
+
+
+* 프리페치를 완전히 비활성화하지 않고 리소스 사용량을 줄이려면, 마우스 호버 시에만 프리페치를 사용하면 됨
+* 이렇게 하면 뷰포트의 모든 링크가 아닌, 사용자가 방문할 가능성이 높은 경로로만 프리페치가 제한됨
+
+## 2-5. Hydration이 완료되지 않음
+
+* `<Link>`는 클라이언트 컴포넌트이기 때문에 라우팅 페이지를 프리페치하기 전에 하이드레이션해야 함
+* 초기 방문 시 대용량 자바스크립트 번들로 인해 하이드레이션이 지연되어 프리페칭이 바로 시작되지 않을 수 있음
+* React는 선택적 Hydration을 통해 이를 완화하며, 다음과 같은 방법으로 이를 더욱 개선할 수 있음
+* `@next/bundle-analyzer` 플러그인을 사용하면 대규모 종속성을 제거하여, 번들 크기를 식별하고 줄일 수 있음
+* 가능하다면 클라이언트에서 서버로 로직을 이동
+
+
+
+## Hydration이란 무엇인가
+
+* Hydration이란 서버에서 생성된 HTML에 JavaScript 로직을 추가하여 동적으로 상호작용이 가능하도록 만드는 과정을 의미
+
+## 3. Examples - 네이티브 히스토리 API
+
+* Next.js를 사용하면 기본 `window.history.pushState` 및 `window.history.replaceState` 메서드를 사용하여 페이지를 다시 로드하지 않고도 브라우저의 기본 스택을 업데이트할 수 있음
+* `pushState` 및 `replaceState` 호출은 Next.js 라우터에 통합되어 `usePathname` 및 `useSearchParams`와 동기화할 수 있음
+* `window.history.pushState`
+* 이 것을 사용하여 브라우저의 기록 스택에 새 항목을 추가할 수 있음
+* 사용자는 이전 상태로 돌아갈 수 있음
+* 예를 들어 제품 목록을 정렬할 수 있음
+
+
+* `window.history.replaceState`
+* 브라우저의 기록 스택에서 현재 항목을 바꾸려면 이 기능을 사용
+* 사용자는 이전 상태로 돌아갈 수 없음
+* 예를 들어 애플리케이션의 '로케일(Locale)'을 전환하는 경우
+
+
+* Locale: 사용자의 언어, 지역, 날짜/시간 형식, 숫자 표기법 등 사용자 인터페이스에서 사용되는 다양한 설정을 정의하는 문자열
+
+---
+
+# Server and Client Component
+
+## Introduction
+
+* 기본적으로 layout과 page는 server component
+* server에서 데이터를 가져와 UI의 일부를 렌더링할 수 있고, 선택적으로 결과를 cache한 후 client로 스트리밍할 수 있음
+* 상호작용이나 브라우저 API가 필요한 경우 client component를 사용하여 기능을 계층화 할 수 있음
+* 이번 장에서는 Next.js에서 server 및 client component가 작동하는 방식과 이를 사용하는 시기를 설명하고, 애플리케이션에서 이 컴포넌트를 사용하는 방법에 대한 예제를 소개
+
+## 1. server 및 client component를 언제 사용해야 하나
+
+* client 환경과 server 환경은 서로 다른 기능을 가지고 있음
+* server 및 client component를 사용하면 사용하는 사례에 따라 각각의 환경에서 필요한 로직을 실행할 수 있음
+* 다음과 같은 항목이 필요한 경우 client component를 사용
+* state 및 event handler에 `onClick`, `onChange`
+* LifeCycle logic, 예: `useEffect`
+* 브라우저 전용 API, 예: `localStorage`, `window`, `Navigator.geolocation` 등
+* 사용자 정의 Hook
+
+
+* 다음과 같은 항목이 필요한 경우 server component를 사용
+* 서버의 데이터베이스 혹은 API에서 data를 가져오는 경우 사용
+* API key, token 및 기타 보안 데이터를 client에 노출하지 않고 사용
+* 브라우저로 전송되는 JavaScript의 양을 줄이고 싶을 때 사용
+* 콘텐츠가 포함된 첫 번째 페인트(First Contentful Paint-FCP)를 개선하고, 콘텐츠를 client에 점진적으로 스트리밍
+
+
 # 9월 30일 (5주차)
 
 ## Layout and Pages
