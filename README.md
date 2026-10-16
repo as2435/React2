@@ -1,4 +1,163 @@
 # 202230209 김태율
+# 10월 14일 (7주차)
+
+## Server and Client Component
+
+## 1. server 및 client component를 언제 사용해야 하나
+
+* 예를 들어 `<Page>` 컴포넌트는 게시물에 대한 데이터를 가져와서, client 측 상호 작용을 처리하는 `<LikeButton>`에 props로 전달하는 server component
+* 그리고 `@/ui/like-button`은 client component이기 때문에 use client를 사용
+
+```typescript
+import LikeButton from "@/app/ui/like-button";
+import { getPost } from "@/lib/data";
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const post = await getPost(id);
+
+  return (
+    <div>
+      <main>
+        <h1>{post.title}</h1>
+        {/* ... */}
+        <LikeButton likes={post.likes} />
+      </main>
+    </div>
+  );
+}
+
+```
+
+```typescript
+"use client";
+import { useState } from "react";
+
+export default function LikeButton({ likes }: { likes: number }) {
+  // ...
+}
+
+```
+
+## Optimistic Update [Optimistic Update(낙관적 업데이트)]
+
+* 사용자에 의해서 이벤트가 발생하면, 서버 응답을 기다리지 않고 클라이언트(브라우저)의 UI를 즉시 변경(업데이트)
+* 서버에 보낸 요청의 성공을 낙관한다고 가정해서 먼저 화면에 변화를 보여줌
+* 서버에서 응답이 없으면, UI를 원래 상태로 롤백
+* 네트워크 지연 동안에도 앱이 "빠르게 반응"하도록 느끼게 하는 것이 목적
+* (장점)
+* 서버 응답 속도와 관계없이 즉각적인 피드백을 제공하여 사용자 경험을 향상
+* 네트워크 상태가 나쁘거나 응답 시간이 길어도 사용자에게 체감되는 속도가 빠름
+
+
+* (단점)
+* 서버에서 오류가 발생하면, 사용자에게는 잠시동안 잘못된 정보가 표시될 수 있음
+* 오류 발생 시 복구 로직이 필요
+
+
+
+## Pessimistic Update [Pessimistic Update(비관적 업데이트)]
+
+* 이벤트가 발생하면 먼저 서버에 요청을 보내고, 서버에서 성공 응답을 받은 후에 클라이언트의 UI를 업데이트
+* (장점)
+* 서버의 응답을 기반으로 하기 때문에 데이터의 일관성이 보장
+* 오류가 발생할 가능성이 낮고, 잘못된 정보가 표시될 염려가 없음
+
+
+* (단점)
+* 사용자는 서버의 응답을 기다려야 하므로, 응답이 늦어지면 사용자 경험이 저하될 수 있음
+* 특히 네트워크 지연이 발생할 경우 체감 속도가 느려짐
+
+
+
+### 낙관 VS 비관
+
+| 구분 | 낙관적 업데이트 | 비관적 업데이트 |
+| --- | --- | --- |
+| **UI 업데이트 시점** | 요청 직후 즉시 | 서버 응답을 받은 후 |
+| **응답 실패 시** | 원래 상태로 롤백 | UI 변경 없음 |
+| **속도 및 반응성** | 빠름 | 상대적으로 느림 |
+| **적용 예시** | 좋아요 버튼, 댓글 작성 | 데이터 조회 후 렌더링 |
+
+---
+
+## 2. Next.js에서 server와 client component는 어떻게 동작하는가
+
+### 2-1. server component의 작동
+
+* Next.js는 server에서 React의 API를 사용하여 렌더링을 조정
+* 렌더링 작업은 개별 라우팅 세그먼트 별 묶음(Chunk)으로 나뉨(layout 및 page)
+* server component는 RSC Payload(React Server Component Payload)라는 특수한 데이터 형식으로 렌더링 됨
+* client component와 RSC Payload는 HTML을 미리 렌더링(prerender)하는데 사용됨
+
+### RSC Payload란 무엇인가
+
+* RSC Payload는 렌더링된 React Server Components 트리를 직렬화하여 표현한 컴팩트한 형태
+* client에서 React가 브라우저의 DOM을 업데이트하는데 사용됨
+* RSC Payload에는 다음 내용이 포함됨
+* server component의 렌더링 결과
+* client component가 렌더링될 위치 및 해당 JavaScript 파일 참조를 위한 자리 표시자(Placeholder)
+* server component에서 client component로 전달되는 모든 props
+
+
+
+## RSC는 JSON인가, 바이너리 인가
+
+* **과거: JSON 기반**
+* RSC 초기에는 JSON 형식의 문자열로 데이터를 전달
+* 예: `{type: "component", props: {title: "Hello"}}`
+
+
+* **현재: 바이너리형식으로 최적화**
+* 최신 React 특히 Next.js App Router는 RSC를 compact binary format으로 전송
+* JSON이 아니라, React 전용 이진 포맷으로 스트림(stream)을 통해 전달
+* 이 방식은 JSON보다 용량이 작고, 빠르게 파싱할 수 있음
+
+
+
+### 왜 JSON 대신 바이너리를 사용할까
+
+| 비교 항목 | JSON | Binary(RSC) |
+| --- | --- | --- |
+| **크기** | 크다 | 작다(compact) |
+| **파싱 속도** | 느리다(문자열 파싱) | 빠르다(stream + 이진 파싱) |
+| **구조 표현력** | 제한적(문자만) | 더 복잡한 참조 및 내부 구조 표현 가능 |
+| **RSC 최적화** | - | 최적화됨 |
+
+---
+
+### 2-2. client component의 작동(첫 번째 load)
+
+1. HTML은 사용자에게 경로(라우팅 페이지)의 비대화형(정적) 미리보기를 즉시 보여주는데 사용
+2. RSC 페이로드는 client와 server component 트리를 조정하는데 사용
+3. JavaScript는 client component를 hydration하고, 애플리케이션을 대화형으로 만드는 데 사용됨
+
+### Hydration이란?
+
+* Hydration은 이벤트 핸들러를 DOM에 연결하여 정적 HTML을 인터렉티브하게 만드는 React의 프로세스
+
+### 2-3. 후속 네비게이션
+
+후속 탐색을 할 때:
+
+* RSC 페이로드는 즉시 탐색할 수 있도록 prefetch 및 cache됨
+* client component는 server에서 렌더링된 HTML 없이 전적으로 client에서 렌더링됨
+
+---
+
+## 3. Example
+
+### 3-1. client component 사용
+
+* 파일의 맨 위, 즉 import문 위에 `"use client"` 지시문을 추가하여 client component를 생성할 수 있음
+* `"use client"`는 server와 client 모듈 트리 사이의 경계를 선언하는 데 사용됨
+* 파일에 `"use client"`로 표시되면 해당 파일의 모든 import와 자식 component는 client 번들의 일부로 간주됨
+* 즉, client를 대상으로 하는 모든 component에 이 지시문을 추가할 필요가 없음
+
 # 10월 7일 (6주차)
 
 ## Linking and Navigating
