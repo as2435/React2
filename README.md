@@ -1,4 +1,149 @@
 # 202230209 김태율
+# 10월 28일 (9주차)
+## Server and Client Component
+
+## 3.1 client component 사용 실습
+
+* `src/components/counter.tsx`
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <div>
+      <p>{count} likes</p>
+      <button onClick={() => setCount(count + 1)}>Click me</button>
+    </div>
+  );
+}
+
+```
+
+
+* Counter 컴포넌트를 작성하는 대표적인 이유
+* 다른 컴포넌트의 완성을 위해 사용
+* 라우팅 페이지의 렌더링을 위해 사용
+
+
+
+
+* `src/app/[id]/page.tsx`
+```tsx
+export default async function PostPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  // posts에서 슬러그에 해당하는 포스트 찾기
+  // getPost 대신 직접 posts 배열에서 찾기
+  const post = posts.find((p) => p.id === id);
+
+  if (!post) {
+    notFound();
+  }
+
+  return (
+    <>
+      <main>
+        <h1>{post.title}</h1>
+        <p>{post.content}</p>
+        <LikeButton likes={post.likes} />
+      </main>
+    </>
+  );
+}
+
+```
+
+
+* `src/ui/LikeButton.tsx`
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export default function LikeButton({ likes }: { likes: number }) {
+  // Optimistic Updates(낙관적 업데이트)
+  // 클라이언트 전용 컴포넌트 - 초기 likes 값을 받아 로컬에서 즉시 반영
+  // 서버에 저장하지 않고, 단순히 UI 상에서 좋아요 수를 증가시키는 역할
+  const [count, setCount] = useState<number>(likes ?? 0);
+  const [isLiking, setIsLiking] = useState(false);
+
+  const handleClick = async () => {
+    // 낙관적 업데이트
+    setIsLiking(true);
+    setCount((c) => c + 1);
+
+    // 실제 저장 로직(API 호출 등)이 있다면 이곳에서 호출할 수 있음
+    // 예: await fetch('/api/like', {method: 'POST', body: JSON.stringify({id})})
+
+    // 예제에서는 짧은 지연 후 버튼 상태만 해제
+    setTimeout(() => setIsLiking(false), 300);
+  };
+
+  return (
+    <button onClick={handleClick} disabled={isLiking} aria-pressed={false}>
+      좋아요 {count}
+    </button>
+  );
+}
+
+```
+
+
+
+## 3-2. JS bundle 크기 줄이기
+
+* client JavaScript 번들의 크기를 줄이려면 UI의 큰 부분을 client component로 표시하는 대신 특정 대화형 component에 `"use client"`를 추가
+* 예를 들어, 다음 예제의 `<Layout>` 컴포넌트는 로고와 탐색 링크와 같은 정적 요소가 대부분이지만 대화형 검색창이 포함되어 있음
+* `<Search>`는 대화형이기 때문에 client component가 되야 하지만, 나머지 layout은 server component로 유지될 수 있음
+* 나머지 layout은 server component로 유지해야 함
+
+```tsx
+// Client Component
+import Search from "./search";
+
+// Server Component
+import Logo from "./logo";
+
+// Layout is a Server Component by default
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <nav>
+        <Logo />
+        <Search />
+      </nav>
+      <main>{children}</main>
+    </>
+  );
+}
+
+```
+
+```tsx
+"use client";
+
+export default function Search() {
+  // ...
+}
+
+```
+
+* `<Search/>`는 사용자와의 상호작용이 바로 이루어질 가능성이 있기 때문에 client component로 사용하고, `<Logo/>`는 상대적으로 중요하지 않고 이미지 등 용량이 크기 때문에 server component로 사용하는 것이 좋음
+
+## 3-3. server에서 client component로 데이터 전달
+
+* props를 사용하여 server component에서 client component로 데이터를 전달 할 수 있음
+* 앞에서 작성한 PostPage(`/app/[id]/page.tsx`) server component는 client component인 `LikeButton`으로 `likes` props를 전달하고 있는 것을 확인할 수 있음
+* `<LikeButton likes="{post.likes}"/>`
+
 # 10월 14일 (7주차)
 
 ## Server and Client Component
