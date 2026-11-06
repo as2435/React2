@@ -1,4 +1,336 @@
 # 202230209 김태율
+# 11월 4일 (10주차)
+## 3-3. server에서 client component로 데이터 전달
+
+* `props`를 사용하여 server component에서 client component로 데이터를 전달 할 수 있음
+* 앞에서 작성한 PostPage(`/app/[id]/page.tsx`) server component는 client component인 `LikeButton`으로 `likes` props를 전달하고 있는 것을 확인할 수 있음
+`<LikeButton likes="{post.likes}"/>`
+* 다른 방법으로는 `use` Hook을 사용하여 server component에서 client component로 데이터를 스트리밍 할 수도 있음.
+* **알아두면 좋은 정보:** client component에 전달되는 Props는 React로 직렬화가 가능해야 함
+
+### 직렬화(serialization)란?
+
+* 일반적으로는 메모리에 있는 복잡한 데이터를 바이트의 연속 형태로 변환하는 과정을 의미
+* 즉, 자바스크립트의 객체나 배열처럼 구조가 있는 데이터를 파일로 저장하거나, 네트워크로 전송하기 쉽게 만드는 과정
+* React나 Next.js 같은 프레임워크는 컴포넌트의 상태나 트리 구조를 서버에서 직렬화하여 클라이언트로 전송하고, 클라이언트에서 역직렬화 하는 과정을 자주 수행
+
+---
+
+## 3-4. server 및 client component의 인터리빙
+
+* **인터리빙(Interleaving)은** 여러 데이터 블록이나 비트를 섞어서 전송하거나 처리하여 오류 발생 시 영향을 최소화하는 기술
+* 특히 데이터 통신에서 버스트 오류(지속적인 오류)를 줄이고 오류 정정 코드를 효과적으로 사용하기 위해 사용
+* 문서에서는 server 컴포넌트와 client 컴포넌트가 섞여서(interleaved) 동작할 때 자주 등장하는 패턴
+* server 컴포넌트의 prop을 client 컴포넌트에 전달할 수 있음
+* 이를 통해 client component 내에서 server에서 렌더링된 UI를 시각적으로 중첩할 수 있음
+* 컴포넌트에 공간(slot)을 만들고 `children`을 끼워넣는 패턴이 일반적
+
+```tsx
+"use client";
+
+export default function Modal({ children }: { children: React.ReactNode }) {
+  return <div>{children}</div>;
+}
+
+```
+
+```tsx
+import Modal from "./ui/modal";
+import Cart from "./ui/cart";
+
+export default function Page() {
+  return (
+    <Modal>
+      <Cart />
+    </Modal>
+  );
+}
+
+```
+
+* 예를 들어, client의 state를 사용하여 표시 여부를 전환(toggle)하는 `<Modal>` 컴포넌트 안에 server에서 데이터를 가져오는 `<Cart>` 컴포넌트가 있음
+* 그 다음 부모 server 컴포넌트(예: `<Page>`) 안에 `<Modal>`의 자식으로 `<Cart>`를 전달할 수 있음
+* Modal을 불러오는 곳이 Page 이기 때문에 Page가 parent가 되는 것
+
+
+* 이 패턴에서는 server 컴포넌트가 client 컴포넌트에 props로 전달되더라도 서버에서 미리 렌더링 됨
+* **정리하면** 클라이언트 컴포넌트가 껍데기 역할을 하고, 서버 컴포넌트가 그 안의 내용(`children`)으로 들어오는 구조(패턴)를 설명하는 것
+
+**Next.js에서는 기본적으로**
+
+* **Server Component** - 서버에서 렌더링 됨(데이터 페칭 가능)
+* **Client Component** - 브라우저에서 렌더링 됨(상호작용 가능)
+* 즉, 서버 컴포넌트 안에는 클라이언트 컴포넌트를 넣을 수 있지만, 그 반대는 직접적으로는 불가능
+
+## server 및 client component interleaving 실습
+
+* `src/components/ClientLayout.tsx`
+```tsx
+"use client";
+
+export default function ClientLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="layout">
+      <h1>클라이언트 레이아웃</h1>
+      <div className="content">
+        {children} {/* <-- 이 부분이 "slot" */}
+      </div>
+    </div>
+  );
+}
+
+```
+
+
+* `src/components/ServerContent.tsx`
+```tsx
+export default async function ServerContent() {
+  const data = await fetch(
+    "https://jsonplaceholder.typicode.com/posts/1",
+  ).then((r) => r.json());
+  return <p>서버에서 가져온 제목 {data.title}</p>;
+}
+
+```
+
+
+* `src/app/interleaved/page.tsx`
+```tsx
+import ClientLayout from "@/components/ClientLayout";
+import ServerContent from "@/components/ServerContent";
+
+export default function Page() {
+  return (
+    <ClientLayout>
+      <ServerContent />
+    </ClientLayout>
+  );
+}
+
+```
+
+
+
+### 동작 과정을 살펴보면
+
+1. Next.js는 먼저 ServerContent를 서버에서 렌더링 -> HTML로 변환
+2. 이 HTML을 ClientLayout의 `{children}` 자리에 "끼워 넣음"
+3. 그 다음 클라이언트에서는 ClientLayout만 hydration(즉 JS 연결)
+4. 결국 서버 데이터는 이미 들어와 있고, 버튼이나 이벤트 등은 클라이언트 컴포넌트에서 처리가 가능
+-> 이렇게 둘이 섞여(interleaved) 있는 패턴만 되는 것
+
+---
+
+# Context란?
+
+* Next.js에서 Context는 React의 Context API를 사용하여 컴포넌트 사이에 데이터를 공유하는 메커니즘을 의미
+* 즉, 부모 컴포넌트에서 자식 컴포넌트로 직접 props를 전달하지 않고도, 특정 데이터를 필요한 컴포넌트에서 쉽게 접근하고 사용할 수 있도록 도와줌
+
+### [주요 특징]
+
+* **전역 상태관리:** Context를 사용하면 애플리케이션 전체에서 공유해야 하는 데이터를 중앙 집중적으로 관리할 수 있음(예: 사용자 정보, 테마 설정 등)
+* **props drilling 문제 해결:**
+* 컴포넌트 트리가 깊어질수록 props를 계속 전달해야 하는 번거로움을 줄여줌
+* Context를 사용하면 필요한 컴포넌트에서 바로 데이터를 가져올 수 있으므로, 코드의 가독성을 높이고 유지 보수를 용이하게 함
+
+
+* **React 컴포넌트에서 사용:** Context는 React에서 제공하는 기능이기 때문에, Next.js에서도 React 컴포넌트를 사용하여 구현
+
+### [Next.js 에서 Context 사용 시 고려사항]
+
+* **클라이언트 컴포넌트:** Next.js 13부터 클라이언트 컴포넌트 내에서 Context를 자유롭게 사용 가능
+* **서버 컴포넌트:** 서버 컴포넌트에서는 직접 Context를 생성하거나 사용할 수 없지만, 클라이언트 컴포넌트로 데이터를 전달하여 간접적으로 사용 가능
+* **성능:** Context를 과도하게 사용하면 렌더링 성능에 영향을 줄 수 있으므로, 필요한 경우에만 신중하게 사용
+
+```tsx
+// Context 생성
+const MyContext = React.createContext();
+
+function MyComponent() {
+  const value = useContext(MyContext);
+  return <div>{value}</div>;
+}
+
+function App() {
+  return (
+    <MyContext.Provider value="Hello from Context">
+      <MyComponent />
+    </MyContext.Provider>
+  );
+}
+
+```
+
+* `MyContext`는 Context 객체를 나타내고, `MyContext.Provider`는 `MyComponent`에 데이터를 제공
+* `useContext(MyContext)`를 통해 `MyComponent`는 "Hello from Context" 값을 가져와서 렌더링
+
+---
+
+## 3-5. Context provider (컨텍스트 제공자)
+
+* React Context는 일반적으로 전역 상태를 공유하는데 사용됨
+* 그러나 server component에서는 React Context가 지원되지 않음
+* Context를 사용하려면 `children`을 허용하는 client component로 만들어야 함
+* 그 다음 server component로 가져옴 (예: `Layout`)
+* 이제 server component에서 Provider component를 직접 감싸서 렌더링 할 수 있으며, 앱 전체의 다른 모든 client component는 이 Context를 사용할 수 있음
+
+**알아두면 좋은 정보**
+
+* Provider component를 트리에서 가능한 한 깊숙이 렌더링해야 함
+* `ThemeProvider`가 전체 `html` 문서 대신 `{children}`만 래핑하는 방식을 주목
+* 이렇게 하면 Next.js가 server component의 정적 부분을 최적화하기 더 쉬워짐
+
+## Context provider 실습
+
+* `src/components/ThemeProvider.tsx`
+```tsx
+"use client";
+
+import { createContext, useEffect, useState } from "react";
+
+export const ThemeContext = createContext<{
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+}>({
+  theme: "light",
+  toggleTheme: () => {},
+});
+
+export default function ThemeProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.documentElement.dataset.theme = theme;
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+```
+
+
+* `src/component/ThemeStatus.tsx`
+```tsx
+"use client";
+
+import { useContext } from "react";
+import { ThemeContext } from "./ThemeProvider";
+
+export default function ThemeStatus() {
+  const { theme, toggleTheme } = useContext(ThemeContext);
+  return (
+    <div style={{ display: "inline-block", marginLeft: 12 }}>
+      <button onClick={toggleTheme} aria-label="toggle theme">
+        Theme: {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
+      </button>
+    </div>
+  );
+}
+
+```
+
+
+* `src/layout.tsx`
+```tsx
+import ThemeProvider from "@/components/ThemeProvider";
+import ThemeStatus from "@/components/ThemeStatus";
+import Link from "next/link";
+import "./global.css";
+
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body>
+        <ThemeProvider>
+          <header>
+            <p>=== Root Layout Header ===</p>
+            <ThemeStatus />
+            <nav>
+              <Link href="/">Home</Link> |&nbsp;
+              <Link href="/counter">Counter</Link> |&nbsp;
+              <Link href="/interleaved">Interleaved</Link> |&nbsp;
+              <br />
+              <br />
+              Slug Page Menu : &nbsp;
+              <Link href="/nextjs">nextjs</Link> | &nbsp;
+              <Link href="/routing">routing</Link> | &nbsp;
+              <Link href="/ssr-ssg">ssr-ssg</Link> | &nbsp;
+              <Link href="/dynamic-routes">dynamic-routes</Link>
+              <br />
+            </nav>
+            <br />
+            <br />
+          </header>
+          <main>{children}</main>
+          <footer>=== Root Layout Footer ===</footer>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+
+```
+
+
+* `src/global.css`
+```css
+html[data-theme="light"] {
+  background-color: white;
+  color: black;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}
+
+html[data-theme="dark"] {
+  background-color: #121212;
+  color: white;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}
+
+```
+
+
+
+### 1. Context 생성 코드 설명(ThemeProvider.tsx) - client 컴포넌트
+
+* context를 사용하면 props를 사용하지 않고도 전역적으로 사용할 theme, 언어 설정, 로그인 정보 등을 하위 컴포넌트에 전달할 수 있음
+* `createContext()`는 React 컴포넌트 트리 전체에 값을 공유할 수 있도록 하는 역할
+* `createContext(...)`로 Context 객체를 생성하여, theme state를 공유
+* `<{...}>` 부분은 타입 부분
+* `theme`: 'light' 또는 'dark'중 하나
+* `toggleTheme`: 아무 인자도 받지 않고, 반환값도 없는 함수
+
+
+* 초기값은 provider가 없을 때 사용할 fallback value
+* React에서는 `createContext()`를 호출할 때 기본값이 반드시 있어야 함
+* 보통은 실제 동작하지 않는 빈 함수(`() => {}`)를 기본으로 넣어둠
+* 실제 동작은 ThemeProvider 컴포넌트에서 설정
+* `theme: 'light'`, `toggleTheme: () => {}`
+
+
 # 10월 28일 (9주차)
 ## Server and Client Component
 
