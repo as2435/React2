@@ -1,4 +1,284 @@
 # 202230209 김태율
+# 11월 11일 (11주차)
+
+## Server and Client Component
+
+## Context Provider 실습 코드 설명
+
+### 1. Context 생성 코드 설명 (`ThemeProvider.tsx`) - client 컴포넌트
+
+* context를 사용하면 props를 사용하지 않고도 전역적으로 사용할 theme, 언어 설정, 로그인 정보 등을 하위 컴포넌트에 전달할 수 있음
+* `createContext()`는 React 컴포넌트 트리 전체에 값을 공유할 수 있도록 하는 역할
+* `createContext(...)`로 Context 객체를 생성하여, theme state를 공유
+* `<{...}>` 부분은 타입 부분
+* `theme`: `'light'` 또는 `'dark'` 중 하나
+* `toggleTheme`: 아무 인자도 받지 않고, 반환값도 없는 함수
+
+
+* 초기값은 provider가 없을 때 사용할 fallback value
+* React에서는 `createContext()`를 호출할 때 기본값이 반드시 있어야 함
+* 보통은 실제 동작하지 않는 빈 함수(`() => {}`)를 기본으로 넣어둠
+* 실제 동작은 ThemeProvider 컴포넌트에서 설정
+* `theme: 'light'`, `toggleTheme: () => {}`
+
+
+* 다음 파일 내부에서 `ThemeProvider` 컴포넌트를 정의
+* `useState`로 `theme` 상태를 관리 : `<'light' | 'dark'>`은 TypeScript의 "유니온 타입"이며, 초기값은 light라는 것을 의미
+```tsx
+const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+```
+
+
+* **TypeScript의 유니온 타입이란?**
+* `|`(파이프)로 여러 타입을 연결해서 "이 값은 각각의 타입 중 하나가 될 수 있다"는 것을 지정
+* 코드에서 문자열 리터럴 유니온 타입의 경우, state 값으로 `'light'` 또는 `'dark'`만 설정할 수 있어 코드 자동완성과 타입 안정성이 향상됨
+
+
+* 다음은 `useEffect` Hook을 사용해서 테마(Theme)를 HTML, 문서 전체에 적용하는 아주 전형적인 패턴
+* `useEffect` Hook은 컴포넌트가 렌더링된 후 부수 효과(side effect)를 실행하기 위한 함수
+```tsx
+useEffect(() => {
+  if (typeof window !== "undefined") {
+    document.documentElement.dataset.theme = theme;
+  }
+}, [theme]);
+
+```
+
+
+* `if`문의 조건절은 "현재 실행 환경이 브라우저인지 확인"하는 부분
+* 서버 사이드 렌더링(SSR) 단계에서는 `window` 객체가 없음
+* 만약 서버에서 `window`를 참조하면 오류 발생 (`ReferenceError: window is not defined`)
+* 따라서 `typeof window !== 'undefined'`은 클라이언트(브라우저) 환경일 때만 실행하라는 의미
+
+
+* `document.documentElement`는 HTML 문서의 `<html>` 요소를 가리킴
+* `dataset.theme = theme`은 `<html>` 태그에 `data-theme` 속성을 추가하는 코드
+* 만일 `theme` state 값이 `"dark"`라면 다음과 같이 HTML을 반환: `<html data-theme="dark">`
+* `useEffect`의 두 번째 인자 `[theme]`는 의존성 배열(dependency array)
+* `theme` 값이 변경될 때마다 `useEffect` 안의 코드가 다시 실행
+* 즉, 테마가 바뀔 때마다 HTML의 `data-theme` 속성도 업데이트
+
+
+* 이 방법을 사용할 경우 CSS에서 속성을 조건으로 스타일을 다르게 지정할 수 있음
+* 여기서 `html[data-theme='light']`는 속성 선택자(Attribute Selector)로 CSS에서 클래스나 아이디 처럼 요소를 선택하는 또 다른 방법
+* 속성 선택자는 class를 여러 개 붙이는 경우보다 스타일 충돌을 줄일 수 있음
+```css
+html[data-theme="light"] {
+  background-color: white;
+  color: black;
+}
+
+html[data-theme="dark"] {
+  background-color: black;
+  color: white;
+}
+
+```
+
+
+* `theme` state를 삼항 연산자로 토글해서 `setTheme` 함수를 이용해서, `toggleTheme`에 저장
+```tsx
+const toggleTheme = () => {
+  setTheme((t) => (t === "dark" ? "light" : "dark"));
+};
+
+return (
+  <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    {children}
+  </ThemeContext.Provider>
+);
+
+```
+
+
+* **`ThemeContext.Provider`는?**
+* `createContext` 함수를 호출하면, React는 Context 객체 하나를 생성
+* 이 객체 안에는 여러 속성이 있는데, 대표적인 것이 다음 두 가지
+* `ThemeContext.Provider`, `ThemeContext.Consumer`
+
+
+* 즉, Provider는 `createContext()`를 호출하면 자동으로 생성되는 React 컴포넌트
+
+
+* 따라서 `ThemeContext.Provider` 컴포넌트에 현재 `theme` state와 함께 `toggleTheme` 함수도 함께 props로 전달
+* 즉, 하위 컴포넌트에서는 현재 `theme` state를 알 수 없기 때문에 버튼 쪽으로 `toggleTheme` 함수와 함께 `theme` state를 전달하는 것
+
+
+
+### 2. 테마 토글 버튼 코드 설명 (`ThemeStatus.tsx`) - client 컴포넌트
+
+* `ThemeContext`를 사용하기 위해 `theme-provider`를 import
+* `useContext` 함수를 이용해서 `ThemeContext`에서 전달받은 `theme`와 `toggleTheme`를 추출
+* 클릭 이벤트가 발생하면 추출된 `toggleTheme` 함수가 실행되고, 버튼 내의 삼항연산자를 사용하여 버튼의 모양을 교체
+
+```tsx
+"use client";
+
+import { useContext } from "react";
+import { ThemeContext } from "./ThemeProvider";
+
+export default function ThemeStatus() {
+  const { theme, toggleTheme } = useContext(ThemeContext);
+  return (
+    <div style={{ display: "inline-block", marginLeft: 12 }}>
+      <button onClick={toggleTheme} aria-label="toggle theme">
+        Theme: {theme === "dark" ? "Dark" : "Light"}
+      </button>
+    </div>
+  );
+}
+
+```
+
+* `aria-label` : 텍스트가 없거나 불분명할 때, 화면 낭독기 등 보조 기술이 버튼의 역할을 설명하도록 접근성 이름을 제공
+* `aria` : Accessible Rich Internet Applications의 약자
+
+### 3. RootLayout 수정 코드 설명 - server 컴포넌트
+
+* `ThemeProvider`와 `ThemeStatus`(버튼) 컴포넌트 사용을 위해 import
+* `ThemeStatus`는 출력을 원하는 곳에 삽입
+* `ThemeProvider`는 `<html>...</html>`을 감싸줌
+* 문서의 설명으로는 `{children}`을 감싸면 최적화 될 수 있다고 되어 있지만 이 프로젝트의 경우 동작하지 않음
+* why? css의 속성 선택자로 `html`을 사용하기 때문
+
+
+
+---
+
+## Context provider 실행 과정 리뷰
+
+1. **Context 생성 (`ThemeProvider.tsx`)**
+* `createContext(...)`로 Context 객체를 생성: 초기값은 provider가 없을 때 사용할 fallback값
+* 이 파일 내부에서 `ThemeProvider` 컴포넌트를 정의 - `useState`로 `theme` 상태를 관리
+* `toggleTheme` 함수는 `setTheme`를 호출해 상태를 변경
+* `useEffect`로 상태 변경 시 `document.documentElement.dataset.theme`에 값을 기록 (전역 스타일 적용 용도)
+* `ThemeContext.Provider`에 `value={{theme, toggleTheme}}`를 넣고 `children`을 감싸줌
+
+
+
+
+2. **Provider 배치 (`RootLayout`)**
+* `RootLayout`에서 `ThemeProvider`로 루트를 감싸줌
+* 이렇게 하면 Provider 하위에 렌더링 되는 모든 컴포넌트들이 `ThemeContext`에 접근할 수 있음
+* `children`은 `RootLayout`으로 전달된 자식 컴포넌트들을 의미하고, Provider가 그들을 감싸므로 자식들이 Context에 접근 가능해지게 됨
+
+
+
+### Context Provider의 동작 순서
+
+1. 사용자가 `ThemeStatus`의 버튼 클릭
+2. `toggleTheme()` 호출
+3. Provider 내부의 `setTheme`이 실행되어 `theme` 상태가 변경
+4. 상태 변경으로 Provider와 그 하위 컴포넌트들이 리렌더링되어 `theme` 값이 최신으로 반영됨
+5. `useEffect`가 실행되어 `document.documentElement.dataset.theme` 값도 갱신 (글로벌 스타일 반영)
+
+### Context provider 순서도 형식으로 정리
+
+1. **앱 시작 / RootLayout 렌더**
+* `RootLayout`이 렌더되고 `ThemeProvider`로 `children`을 감쌈
+
+
+2. **Context 생성(초기화)**
+* `ThemeContext = createContext(...)`가 정의되어 있음 (기본값 제공)
+
+
+3. **Provider 인스턴스 생성**
+* `ThemeProvider` 컴포넌트가 실행되어 내부 state(`theme`, `setTheme`) 생성 (`useState`)
+* Provider의 `value = {theme, toggleTheme}`로 설정
+
+
+4. **하위 트리 렌더링**
+* Provider로 감싼 `children`이 렌더됨, 이 하위 트리는 Context에 접근 가능
+
+
+5. **Consumer 사용: ThemeStatus 렌더**
+* `ThemeStatus`가 렌더되어 `useContext(ThemeContext)`로 `{theme, toggleTheme}`를 가져옴
+
+
+6. **사용자 상호작용: 버튼 클릭**
+* 사용자가 `ThemeStatus`의 버튼을 클릭하면 `toggleTheme()` 호출
+
+
+7. **상태 변경 내부 처리**
+* `ThemeProvider`의 `toggleTheme`가 `setTheme`을 호출하여 `theme` 상태를 변경
+
+
+8. **부수효과 실행 (`useEffect`)**
+* `theme` 변경으로 `ThemeProvider`의 `useEffect`가 실행, `document.documentElement.dataset.theme = theme`로 설정
+
+
+9. **리렌더링 전파**
+* state 변경으로 Provider와 그 하위 Consumer 들이 최신 value를 받아 리렌더링됨
+* `ThemeStatus`는 새 `theme` 값을 받아 UI를 갱신
+
+
+10. **결과: 레이아웃/스타일 반영**
+* `data-theme` 속성 변경을 바탕으로 CSS가 적용되면 실제 시각적 테마 변경이 화면에 반영됨
+
+
+
+---
+
+## 3.6 외부(서드 파티) component
+
+* client 전용 기능에 의존하는 외부 component를 사용하는 경우, 해당 component를 client component에 래핑하여 예상대로 적용하는지 확인할 수 있음
+* 예를 들어, `<Carousel/>`은 `acme-carousel` 패키지에서 가져올 수 있음
+* 이 component는 `useState`를 사용하지만 `'use client'` 지시문은 없음
+* client component 내에서 `<Carousel/>`을 사용하면 예상대로 작동
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { Carousel } from "acme-carousel";
+
+export default function Gallery() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div>
+      <button onClick={() => setIsOpen(true)}>View pictures</button>
+      {/* Works, since Carousel is used within a Client Component */}
+      {isOpen && <Carousel />}
+    </div>
+  );
+}
+
+```
+
+* 그러나 server component 내에서 직접 사용하려고 하면 오류 발생
+* 이는 Next.js가 `<Carousel/>`이 client 전용 기능을 사용하고 있다는 것을 알지 못하기 때문
+* 이 문제를 해결하려면 client 전용 기능에 의존하는 외부 component를 자체 client component로 래핑할 수 있음
+
+```tsx
+"use client";
+
+import { Carousel } from "acme-carousel";
+
+export default Carousel;
+
+```
+
+* 이제 server component 내에서 `<Carousel/>`을 직접 사용할 수 있음
+
+```tsx
+import Carousel from "./carousel";
+
+export default function Page() {
+  return (
+    <div>
+      <p>View pictures</p>
+      {/* Works, since Carousel is a Client Component */}
+      <Carousel />
+    </div>
+  );
+}
+
+```
+
+
 # 11월 4일 (10주차)
 ## 3-3. server에서 client component로 데이터 전달
 
